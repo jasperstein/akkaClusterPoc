@@ -10,7 +10,8 @@ object PingActor {
 
 class PingActor extends Actor {
   override def receive: Receive = {
-    case _ =>
+    case msg =>
+      println(s"got $msg from ${sender()}")
       sender() ! s"I'm ${self.path.toStringWithAddress(AddressExtension(context.system).address)}"
   }
 }
