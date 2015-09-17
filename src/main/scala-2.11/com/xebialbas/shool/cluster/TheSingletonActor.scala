@@ -3,10 +3,11 @@ package com.xebialbas.shool.cluster
 import java.util.Date
 import java.util.concurrent.TimeUnit
 
-import akka.actor.{Actor, Props}
+import akka.actor.{ActorRef, Actor, Props}
 import akka.contrib.pattern.{ClusterSingletonManager, ClusterSingletonProxy}
 import akka.persistence._
-import com.xebialbas.shool.cluster.TheSingletonActor.Ping
+import com.xebialbas.shool.cluster.TheSingletonActor.{Tick, Ping}
+import us.theatr.akka.quartz.{AddCronScheduleFailure, AddCronScheduleSuccess}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -19,6 +20,8 @@ object TheSingletonActor {
   case object DoExit
 
   case object Ping
+
+  case object Tick
 
   def mgrProps(persistent: Boolean = false) = ClusterSingletonManager.props(
     singletonProps = if (persistent) Props[TheSingletonPersistentActor] else Props[TheSingletonActor],
@@ -67,7 +70,12 @@ class TheSingletonPersistentActor extends PersistentActor with AtLeastOnceDelive
 
   var count = 0
 
+  var quartzActor: ActorRef = _
+
   override def receiveCommand = {
+    case AddCronScheduleSuccess => println("Cron success")
+    case AddCronScheduleFailure => println("Cron fail")
+    case Tick => println("Tick")
     case Ping =>
       println("Rcvd: Ping")
       count = count + 1
@@ -103,7 +111,11 @@ class TheSingletonPersistentActor extends PersistentActor with AtLeastOnceDelive
   }
 
   override def receiveRecover: Receive = {
-    case RecoveryCompleted => println("Recovery done.")
+    case RecoveryCompleted =>
+      import us.theatr.akka.quartz._
+      quartzActor = context.actorOf(Props[QuartzActor])
+      quartzActor ! AddCronSchedule(self, "0/5 * * * * ?", Tick)
+      println("Recovery done.")
     case SnapshotOffer(md, snapshotcount) =>
       println(s"Snapshot: metadata=${md}, snapshot=${snapshotcount}")
       count = snapshotcount.asInstanceOf[Int]
